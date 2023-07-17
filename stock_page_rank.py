@@ -1,53 +1,44 @@
 import yfinance as yf
 import pandas as pd
-import sys, os
+import sys
 
-# 下载500只股票近3个月的价格并剔除无法生成价格和生成价格数量少于10个的股票
-def download_stock_prices(stock_list_file, start_date, end_date):
+def calculate_correlation_matrix(stock_list_file, start_date, end_date):
+    # 下载多个股票的数据
     sp500 = pd.read_csv(stock_list_file)
-    symbols = sp500['Symbol'].tolist()
-    #start_date = pd.Timestamp.now() - pd.DateOffset(months=3)
-    #end_date = pd.Timestamp.now()
-    stock_prices = pd.DataFrame()
+    tickers = sp500['Symbol'].tolist()
+    data = yf.download(tickers, start=start_date, end=end_date, interval="1d")
 
-    for symbol in symbols:
-        try:
-            data = yf.download(symbol, start=start_date, end=end_date)
-            if len(data) >= 10:
-                stock_prices[symbol] = data['Close']
-        except Exception as e:
-            print(f"Failed to download data for {symbol}: {e}")
+    # 从下载的数据中提取收盘价，并创建价格矩阵
+    price_matrix = data['Close']
 
-    return stock_prices
+    # 剔除生成股票价格少于10的股票
+    price_matrix = price_matrix.dropna(thresh=10, axis=1)
 
-# 根据下载完成的股票价格生成相关系数矩阵
-def calculate_correlation_matrix(stock_prices):
-    return stock_prices.corr()
+    # 生成股票价格相关系数矩阵
+    corr_matrix = price_matrix.corr()
 
-# 创建全0的transition matrix，根据相关系数小于-0.7的条件设置元素值为1，并对每行进行归一化
-def create_transition_matrix(correlation_matrix, threshold=-0.7):
-    transition_matrix = pd.DataFrame(0, index=correlation_matrix.index, columns=correlation_matrix.columns)
-
-    transition_matrix[correlation_matrix < threshold] = 1
-
-    # 归一化每行，使每行的和等于1
-    transition_matrix = transition_matrix.div(transition_matrix.sum(axis=1), axis=0)
-
-    return transition_matrix
+    # 对相关系数矩阵进行处理
+    for row in corr_matrix.index:
+        negatives = corr_matrix.loc[row, corr_matrix.loc[row] < 0]
+        negatives_sum = negatives.sum()
+        corr_matrix.loc[row, corr_matrix.loc[row] >= 0] = 0
+        corr_matrix.loc[row, corr_matrix.loc[row] < 0] = corr_matrix.loc[row, corr_matrix.loc[row] < 0] / negatives_sum
+    # 将对角线上的值设为零
+    corr_matrix.values[range(len(corr_matrix)), range(len(corr_matrix))] = 0
+    # 删除全为零的行
+    corr_matrix = corr_matrix.loc[(corr_matrix != 0).any(axis=1)]
+    # 打印处理后的相关系数矩阵
+    print("Processed correlation matrix：")
+    print(corr_matrix)
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:
         print("Usage: {} <stock_list_file> <start_date> <end_date>".format(sys.argv[0]))
         sys.exit(1)
 
-    stock_prices = download_stock_prices(sys.argv[1], sys.argv[2], sys.argv[3])
+    stock_list_file = sys.argv[1]
+    start_date = sys.argv[2]
+    end_date = sys.argv[3]
+    
+    calculate_correlation_matrix(stock_list_file, start_date, end_date)
 
-# 生成相关系数矩阵
-    correlation_matrix = calculate_correlation_matrix(stock_prices)
-
-    transition_matrix = create_transition_matrix(correlation_matrix, threshold=-0.7)
-# 打印相关系数矩阵
-    print("相关系数矩阵:")
-    print(correlation_matrix)
-    print("归一化矩阵:")
-    print(transition_matrix)
