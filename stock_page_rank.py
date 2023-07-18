@@ -1,6 +1,8 @@
 import yfinance as yf
 import pandas as pd
 import sys
+import numpy as np
+import matplotlib.pyplot as plt
 
 def calculate_correlation_matrix(stock_list_file, start_date, end_date):
     # 下载多个股票的数据
@@ -28,9 +30,19 @@ def calculate_correlation_matrix(stock_list_file, start_date, end_date):
     # 删除全为零的行
     corr_matrix = corr_matrix.loc[(corr_matrix != 0).any(axis=1)]
     # 打印处理后的相关系数矩阵
-    print("Processed correlation matrix：")
-    print(corr_matrix)
+    # print("Processed correlation matrix：")
+    # print(corr_matrix)
+    return corr_matrix
 
+def compute_stationary_distribution(trans_mat):
+    nd = trans_mat.shape[0]
+    row_one = np.ones((1,nd))
+    I = np.eye(nd)
+    ONE = np.ones((nd,nd))
+    tmp = I - trans_mat + ONE
+    tmp = np.linalg.inv(tmp)
+    v = row_one @ tmp
+    return v[0,:]
 if __name__ == "__main__":
     if len(sys.argv) < 4:
         print("Usage: {} <stock_list_file> <start_date> <end_date>".format(sys.argv[0]))
@@ -40,5 +52,14 @@ if __name__ == "__main__":
     start_date = sys.argv[2]
     end_date = sys.argv[3]
     
-    calculate_correlation_matrix(stock_list_file, start_date, end_date)
+    trans_matrix = calculate_correlation_matrix(stock_list_file, start_date, end_date)
+    v = compute_stationary_distribution(trans_matrix.values)
+    syms = trans_matrix.index.values
 
+    sort_id = np.argsort(v)[::-1]
+
+    score = v[sort_id][:10]
+    syms  = syms[sort_id][:10]
+
+    plt.stem(syms,score)
+    plt.show()
